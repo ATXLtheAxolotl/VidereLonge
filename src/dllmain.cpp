@@ -1,7 +1,8 @@
 #include "minecraft/src-client/common/client/renderer/game/LevelRendererPlayer.h"
-#include "amethyst/events/EventManager.h"
-#include "amethyst/InputManager.h"
-#include "amethyst/HookManager.h"
+#include "amethyst/runtime/events/EventManager.h"
+#include "amethyst/runtime/input/InputManager.h"
+#include "amethyst/runtime/AmethystContext.h"
+#include "amethyst/runtime/HookManager.h"
 #include "amethyst/Log.h"
 
 #include "ConfigManager.h"
@@ -42,7 +43,7 @@ inline void gradualRelease() {
     } else fov += zoomRate;
 }
 
-void OnTick() {
+void OnUpdate() {
     static std::string type = configManager.getZoomType();
     static float targetFov = configManager.getTargetFov();
     
@@ -55,24 +56,38 @@ void OnTick() {
     }
 }
 
-ModFunction void RegisterInputs(InputManager* inputManager) { inputManager->RegisterInput("zoom", 0x56); }
-ModFunction void Initialize(HookManager* hookManager, Amethyst::EventManager* eventManager, InputManager* inputManager) {
-    hookManager->RegisterFunction(&LevelRendererPlayer::getFov, "48 8B C4 48 89 58 ? 48 89 70 ? 57 48 81 EC ? ? ? ? 0F 29 70 ? 0F 29 78 ? 44 0F 29 40 ? 44 0F 29 48 ? 48 8B 05");
-    hookManager->CreateHook(&LevelRendererPlayer::getFov, getFov, &LevelRendererPlayer_getFov);
+SafetyHookInline _getSensitivity;
 
-    inputManager->AddButtonDownHandler("zoom", [](FocusImpact f, ClientInstance c) {
-        releasing = false;
-        pressed = true;
-    });
+float getSensitivity(void* a1, unsigned int a2) {
+    float value = _getSensitivity.call<float>(a1, a2);
+    Log::Info("sens: {}", value);
+    return value;
+}
 
-    inputManager->AddButtonUpHandler("zoom", [](FocusImpact f, ClientInstance c) {
-        static std::string type = configManager.getZoomType();
 
-        if(type == "gradual") releasing = true;
-        pressed = false;
-    });
+ModFunction void Initialize(AmethystContext* context) {
+    context->mHookManager.RegisterFunction(&LevelRendererPlayer::getFov, "48 8B C4 48 89 58 ? 48 89 70 ? 57 48 81 EC ? ? ? ? 0F 29 70 ? 0F 29 78 ? 44 0F 29 40 ? 44 0F 29 48 ? 48 8B 05");
+    context->mHookManager.CreateHook(&LevelRendererPlayer::getFov, getFov, &LevelRendererPlayer_getFov);
 
-    eventManager->beforeTick.AddListener(OnTick);
+    
+    context->mHookManager.CreateHookAbsolute(_getSensitivity, SigScan("74 ? E8 ? ? ? ? 48 8B 5C 24 ? 48 83 C4 ? 5F C3 49 8B C8 E8 ? ? ? ? 48 8B 5C 24 ? 48 83 C4 ? 5F C3 E8 ? ? ? ? CC E8 ? ? ? ? CC CC CC CC CC CC CC CC CC CC 40 53"), getSensitivity);
+
+    context->mInputManager.RegisterNewInput("zoom", 0x56, true);
+    
+    //context->mInputManager.AddButtonDownHandler("zoom", [](FocusImpact f, ClientInstance c) {
+    //    releasing = false;
+    //    pressed = true;
+    //});
+
+    //context->mInputManager.AddButtonUpHandler("zoom", [](FocusImpact f, ClientInstance c) {
+    //    static std::string type = configManager.getZoomType();
+
+    //    if(type == "gradual") releasing = true;
+    //    pressed = false;
+    //});
+    
+    
+    context->mEventManager.update.AddListener(OnUpdate);
 
     Log::Info("[VidereLonge] Mod successfully initialized!");
 }
